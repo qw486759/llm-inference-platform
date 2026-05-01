@@ -1,10 +1,10 @@
 # LLM Inference Platform on Kubernetes
 
-A production-style LLM inference platform demonstrating AI Factory infrastructure skills — containerized serving, Kubernetes orchestration, HPA auto-scaling, and full observability stack.
+A production-style LLM inference platform built as part of an Advanced LLM Techniques course project, extended with full Kubernetes orchestration, HPA auto-scaling, and an observability stack.
 
-Built to align with **NVIDIA Solutions Architect – AI Factory Infrastructure** role requirements.
+Features containerized LLM serving with an OpenAI-compatible API, benchmark-driven architecture decisions, and a Prometheus + Grafana monitoring dashboard.
 
-> **GitHub:** [github.com/qw486759/llm-inference-platform](https://github.com/qw486759/llm-inference-platform)
+
 
 ---
 
@@ -196,6 +196,14 @@ See [docs/adr-inference-strategy.md](docs/adr-inference-strategy.md) for full Ar
 | HPA autoscaling/v2 | Supports multi-metric scaling; v1 deprecated |
 | Multi-stage Dockerfile | Builder stage installs deps; runtime stage is slim |
 | ServiceMonitor label `release: kube-prometheus-stack` | Required for Prometheus Operator auto-discovery |
+
+---
+
+## What I Learned
+
+- **GPU passthrough in WSL2 requires Windows-side NVIDIA driver ≥ 470** — the Linux-side `nvidia-utils` package is not needed; WSL2 bridges directly to the Windows driver via `/dev/dxg`
+- **HPA scale-up lag is a first-class concern for LLM workloads** — because inference requests take 10-30s each, a 30-60s scale-up window means queued requests time out before new pods help; pre-warming with `minReplicas=2` is essential
+- **Prometheus ServiceMonitor label matching is the most common misconfiguration** — the `release:` label on the ServiceMonitor must exactly match the Helm release name, otherwise Prometheus Operator silently ignores the monitor
 
 ---
 
