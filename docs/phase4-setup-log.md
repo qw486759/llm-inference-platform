@@ -1,7 +1,5 @@
 # Phase 4 — Prometheus + Grafana Observability
 
-**Date:** 2026-05-01  
-**Author:** Po-Fang Yang (Megan)  
 **Goal:** Deploy full observability stack on k3d cluster, configure Prometheus scraping, build LLM monitoring dashboard
 
 ---

@@ -1,9 +1,5 @@
 # Phase 1 — WSL2 Environment + Ollama Setup Log
 
-**Date:** 2026-05-01  
-**Author:** Po-Fang Yang (Megan)  
-**Environment:** Windows 11, WSL2 Ubuntu 24.04, NVIDIA GTX 1650 Max-Q 4GB
-
 ---
 
 ## ✅ Checklist
@@ -104,11 +100,3 @@ Hello
 eval: 0.05s
 real    0m0.297s    ✅ well under 200ms target (eval only)
 ```
-
----
-
-## Notes
-
-- First cold start takes ~81s due to model loading into VRAM (2.2GB model, 4GB card)
-- Subsequent requests are **0.05s eval time** — GPU acceleration working correctly
-- Ollama runs as a background systemd service; no need to manually run `ollama serve`

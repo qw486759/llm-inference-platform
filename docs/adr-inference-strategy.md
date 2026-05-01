@@ -1,10 +1,5 @@
 # ADR-001: LLM Inference Deployment Strategy
 
-**Date:** 2026-05-01  
-**Author:** Po-Fang Yang  
-**Status:** Accepted  
-**Context:** LLM Inference Platform on Kubernetes — Northeastern University / Advanced LLM Techniques
-
 ---
 
 ## Context

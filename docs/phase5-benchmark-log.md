@@ -1,7 +1,5 @@
 # Phase 5 — Locust Benchmark + ADR Report
 
-**Date:** 2026-05-01  
-**Author:** Po-Fang Yang (Megan)  
 **Goal:** Benchmark 3 deployment strategies under concurrent load, produce Architecture Decision Record
 
 ---

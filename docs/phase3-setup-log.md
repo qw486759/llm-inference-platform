@@ -1,7 +1,5 @@
 # Phase 3 — Kubernetes Deployment + HPA
 
-**Date:** 2026-05-01  
-**Author:** Po-Fang Yang (Megan)  
 **Goal:** Deploy llm-inference:v1 on local k3d Kubernetes cluster with Horizontal Pod Autoscaler
 
 ---

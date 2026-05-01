@@ -199,14 +199,6 @@ See [docs/adr-inference-strategy.md](docs/adr-inference-strategy.md) for full Ar
 
 ---
 
-## What I Learned
-
-- **GPU passthrough in WSL2 requires Windows-side NVIDIA driver ≥ 470** — the Linux-side `nvidia-utils` package is not needed; WSL2 bridges directly to the Windows driver via `/dev/dxg`
-- **HPA scale-up lag is a first-class concern for LLM workloads** — because inference requests take 10-30s each, a 30-60s scale-up window means queued requests time out before new pods help; pre-warming with `minReplicas=2` is essential
-- **Prometheus ServiceMonitor label matching is the most common misconfiguration** — the `release:` label on the ServiceMonitor must exactly match the Helm release name, otherwise Prometheus Operator silently ignores the monitor
-
----
-
 ## Repo Structure
 
 ```
@@ -255,7 +247,7 @@ llm-inference-platform/
 
 | Component | Version |
 |-----------|---------|
-| OS | Windows 11 + WSL2 Ubuntu 24.04 |
+| OS | Windows 10 + WSL2 Ubuntu 24.04 |
 | GPU | NVIDIA GTX 1650 Max-Q (4GB VRAM) |
 | NVIDIA Driver | 596.36 |
 | CUDA | 13.2 |

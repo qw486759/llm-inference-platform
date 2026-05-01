@@ -1,7 +1,5 @@
 # Phase 2 — FastAPI Wrapper + Dockerfile
 
-**Date:** 2026-05-01  
-**Author:** Po-Fang Yang (Megan)  
 **Goal:** Build OpenAI-compatible FastAPI inference wrapper and containerize it
 
 ---
