@@ -115,6 +115,43 @@ Hardware: NVIDIA GTX 1650 Max-Q (4GB VRAM), k3d local cluster.
 
 ---
 
+## GPU Bottleneck Analysis
+
+Benchmark results reveal an important architectural constraint: **adding FastAPI gateway pods does not proportionally increase inference throughput**, because all requests ultimately converge on a single GPU-backed Ollama runtime.
+
+| Scenario | Gateway Pods | GPU Backend | Failure Rate | P95 Latency | Throughput | Bottleneck |
+|----------|-------------|-------------|-------------|-------------|------------|------------|
+| A: Single Pod | 1 | 1× GTX 1650 | 45.5% ❌ | 35s | 0.37 req/s | API queue overflow + GPU serialization |
+| B: HPA Dynamic | 2→6 | 1× GTX 1650 | 0% ✅ | 28s | 0.34 req/s | HPA warm-up lag + shared GPU backend |
+| C: Pre-scaled | 4 | 1× GTX 1650 | 0% ✅ | 24s | 0.40 req/s | Shared GPU backend |
+
+**Key insight:** Throughput variance across scenarios is only 0.06 req/s (0.34→0.40), despite a 4× difference in pod count. This confirms the bottleneck is the **single GPU backend**, not the API gateway layer.
+
+This exposes the distinction between two separate scaling dimensions:
+- **Gateway scalability** — handled by Kubernetes HPA, eliminates request queue overflow and 502 errors
+- **Accelerator capacity** — fixed by hardware; true horizontal scaling requires either multiple GPU nodes or a batching-capable serving runtime
+
+For production GPU inference scaling, the correct approach is not more gateway pods, but a runtime that can saturate the GPU through concurrent batching — such as vLLM (continuous batching) or NVIDIA Triton Inference Server (dynamic batching with TensorRT-LLM backend).
+
+Measured GPU inference throughput on this hardware: **~20 tokens/sec** on NVIDIA GTX 1650 Max-Q (CUDA 13.2), Phi-3 Mini 4-bit quantized.
+
+---
+
+## Production GPU Deployment Path
+
+The local benchmark uses host-level Ollama GPU acceleration because the test environment runs on WSL2 + k3d, which does not support GPU passthrough to Kubernetes pods. The production migration path is documented in `k8s/gpu-deployment.example.yaml`.
+
+For a production GPU-enabled Kubernetes cluster, the key changes are:
+
+| Component | Local (this project) | Production |
+|-----------|---------------------|------------|
+| GPU access | Host Ollama via `host.docker.internal` | NVIDIA Device Plugin + `nvidia.com/gpu: 1` per pod |
+| Serving runtime | Ollama (dev-friendly, serial queue) | vLLM (continuous batching) or Triton (multi-model) |
+| Scaling signal | CPU utilization (HPA) | Queue depth or tokens/sec (KEDA) |
+| GPU observability | nvidia-smi on host | NVIDIA DCGM Exporter → Prometheus |
+
+---
+
 ## References
 
 - Benchmark tool: Locust 2.43.4

@@ -1,0 +1,64 @@
+# gpu-deployment.example.yaml
+#
+# Production reference manifest for GPU-enabled Kubernetes nodes.
+#
+# This project's local benchmark uses host-level Ollama GPU acceleration
+# because WSL2 + k3d does not support GPU passthrough to Kubernetes pods.
+# This file documents the production deployment path using the NVIDIA Device Plugin.
+#
+# Prerequisites:
+#   - NVIDIA Device Plugin installed on the cluster:
+#     kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml
+#   - GPU-enabled nodes with label: accelerator=nvidia
+#   - vLLM or Triton image replacing Ollama-backed FastAPI wrapper
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-inference-gpu
+  annotations:
+    description: "GPU-scheduled inference deployment using NVIDIA Device Plugin"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llm-inference-gpu
+  template:
+    metadata:
+      labels:
+        app: llm-inference-gpu
+    spec:
+      # Pin pods to GPU-enabled nodes
+      nodeSelector:
+        accelerator: nvidia
+      containers:
+      - name: llm-inference-gpu
+        image: llm-inference:v2
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+            nvidia.com/gpu: 1        # Request 1 GPU per pod via NVIDIA Device Plugin
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+            nvidia.com/gpu: 1        # Each pod gets exclusive GPU access
+        env:
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: "compute,utility"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30    # Longer delay: GPU model load takes more time
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 20

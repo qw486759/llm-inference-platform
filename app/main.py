@@ -29,6 +29,14 @@ TOKENS_GENERATED = Counter(
     "llm_tokens_generated_total",
     "Total completion tokens generated"
 )
+# Measures GPU-bound inference throughput, independent of network/API overhead.
+# Calculated from Ollama's eval_duration (pure model execution time),
+# not end-to-end latency, to isolate accelerator performance.
+TOKENS_PER_SECOND = Histogram(
+    "llm_tokens_per_second",
+    "Token generation rate during model execution (tokens/sec)",
+    buckets=[0.5, 1, 2, 5, 10, 20, 50, 100]
+)
 
 app = FastAPI(title="LLM Inference API", version="1.0.0")
 
@@ -98,11 +106,24 @@ async def chat_completions(req: ChatRequest):
     latency = time.time() - start
     tokens = data.get("eval_count", 0)
 
+    # eval_duration is Ollama's pure model execution time in nanoseconds.
+    # Dividing by 1e9 converts to seconds for tokens/sec calculation.
+    # This isolates GPU inference throughput from network and API overhead.
+    eval_duration_ns = data.get("eval_duration", 0)
+    if eval_duration_ns > 0 and tokens > 0:
+        tokens_per_sec = tokens / (eval_duration_ns / 1e9)
+        TOKENS_PER_SECOND.observe(tokens_per_sec)
+
     REQUEST_COUNT.labels(status="success").inc()
     REQUEST_LATENCY.observe(latency)
     TOKENS_GENERATED.inc(tokens)
 
-    logger.info(f"[{request_id}] latency={latency*1000:.0f}ms tokens={tokens}")
+    logger.info(
+        f"[{request_id}] latency={latency*1000:.0f}ms "
+        f"tokens={tokens} "
+        f"tokens_per_sec={tokens_per_sec:.1f}" if eval_duration_ns > 0 else
+        f"[{request_id}] latency={latency*1000:.0f}ms tokens={tokens}"
+    )
 
     return {
         "id": request_id,
