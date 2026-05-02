@@ -1,8 +1,8 @@
-# LLM Inference Platform on Kubernetes
+# GPU-Accelerated LLM Inference Platform on Kubernetes
 
-A production-style LLM inference platform built to explore serving, orchestration, and benchmarking as a systems engineering problem. The project covers containerization, Kubernetes deployment with HPA auto-scaling, Prometheus/Grafana observability, and load-tested architecture comparisons across three scaling strategies.
+A production-style LLM inference platform built to explore GPU-backed model serving, Kubernetes orchestration, and benchmark-driven architecture decisions. The project covers containerization, Kubernetes deployment with HPA auto-scaling, Prometheus/Grafana observability, and load-tested strategy comparisons across three scaling configurations.
 
-The core question driving the architecture work: **how should a Kubernetes-based LLM inference service be scaled, and what are the measurable trade-offs between deployment strategies?**
+The core question driving the architecture work: **how should a Kubernetes-based LLM inference service be scaled, and what are the measurable trade-offs between deployment strategies — given that all requests converge on a single GPU backend?**
 
 ---
 
@@ -24,14 +24,20 @@ The core question driving the architecture work: **how should a Kubernetes-based
 │  │      ServiceMonitor → Prometheus → Grafana            │   │
 │  └───────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────┘
-                          │
+                          │ HTTP /api/chat
              ┌────────────▼────────────┐
              │   Ollama + Phi-3 Mini   │
-             │   (WSL2, GTX 1650 GPU)  │
+             │   GPU offload / model execution
+             ├─────────────────────────┤
+             │  NVIDIA GTX 1650 Max-Q  │
+             │  4GB VRAM, CUDA 13.2    │
+             │  ~20 tokens/sec         │
              └─────────────────────────┘
 ```
 
-Each FastAPI pod forwards requests to an Ollama backend running on the host machine via `host.docker.internal`. Prometheus scrapes `/metrics` from each pod through a Kubernetes `ServiceMonitor`, and Grafana renders the collected time-series data.
+The FastAPI pods act as **stateless inference gateways**; actual model execution is GPU-accelerated through Ollama on the host NVIDIA GPU. This separation allows the project to study gateway-level scaling independently from GPU-bound inference capacity — a distinction that the benchmark results directly expose.
+
+Prometheus scrapes `/metrics` from each pod through a Kubernetes `ServiceMonitor`, and Grafana renders the collected time-series data.
 
 ---
 
@@ -39,12 +45,12 @@ Each FastAPI pod forwards requests to an Ollama backend running on the host mach
 
 | Layer | Tool | Notes |
 |-------|------|-------|
-| Model Serving | Ollama + Phi-3 Mini (2.2 GB) | GPU-accelerated via GTX 1650 Max-Q |
+| Model Serving | Ollama + Phi-3 Mini (2.2 GB) | GPU-accelerated via GTX 1650 Max-Q, CUDA 13.2 |
 | Inference API | FastAPI + Python 3.11 | OpenAI-compatible `/v1/chat/completions` |
 | Containerization | Docker (multi-stage build) | Slim runtime image |
 | Orchestration | k3d (local Kubernetes) | k3s cluster running inside Docker |
 | Auto-scaling | Kubernetes HPA (autoscaling/v2) | CPU-based scaling, min=2 / max=6 pods |
-| Observability | Prometheus + Grafana | Latency histograms, request rate, error rate |
+| Observability | Prometheus + Grafana | Latency histograms, request rate, error rate, tokens/sec |
 | Load Testing | Locust 2.43.4 | Headless concurrent-user simulation |
 | Environment | WSL2 Ubuntu 24.04 + Windows 11 | NVIDIA Driver 596.36, CUDA 13.2 |
 
@@ -55,11 +61,13 @@ Each FastAPI pod forwards requests to an Ollama backend running on the host mach
 - OpenAI-compatible REST API with streaming and non-streaming response modes
 - `/health` endpoint for Kubernetes readiness and liveness probes
 - `/metrics` endpoint exposing Prometheus-format counters and histograms
+- **`llm_tokens_per_second` metric** derived from Ollama's `eval_duration` — isolates GPU inference throughput from network and API overhead
 - Multi-stage Dockerfile producing a minimal runtime image
 - Kubernetes Deployment with CPU resource requests and limits
 - Horizontal Pod Autoscaler targeting 70% average CPU utilization
-- Grafana dashboard with request rate, P50/P95/P99 latency, error rate, and pod count panels
+- Grafana dashboard with request rate, P50/P95/P99 latency, error rate, pod count, and tokens/sec panels
 - Benchmark suite comparing three deployment strategies under concurrent load
+- `k8s/gpu-deployment.example.yaml` — production reference manifest using NVIDIA Device Plugin
 
 ---
 
@@ -71,11 +79,11 @@ git clone https://github.com/qw486759/llm-inference-platform
 cd llm-inference-platform
 
 # 2. Build the Docker image
-docker build -f docker/Dockerfile -t llm-inference:v1 .
+docker build -f docker/Dockerfile -t llm-inference:v2 .
 
 # 3. Create a local k3d cluster and deploy
 k3d cluster create llm-cluster --agents 2
-k3d image import llm-inference:v1 -c llm-cluster
+k3d image import llm-inference:v2 -c llm-cluster
 kubectl apply -f k8s/
 
 # 4. Deploy the observability stack
@@ -143,6 +151,8 @@ kubectl get pods
 kubectl get hpa
 ```
 
+A production GPU deployment reference is available at `k8s/gpu-deployment.example.yaml`, documenting the migration path to GPU-enabled Kubernetes nodes using the NVIDIA Device Plugin (`nvidia.com/gpu: 1` resource request).
+
 ![K8s Deployment and HPA](docs/images/k8s-deploy-hpa.png)
 
 ---
@@ -157,6 +167,7 @@ Prometheus scrapes `/metrics` from each pod every 15 seconds via a `ServiceMonit
 | Latency Histogram | P50, P95, P99 via `histogram_quantile` |
 | Error Rate | Error requests as a fraction of total |
 | Pod Count | HPA current and maximum replica counts |
+| **Tokens/sec** | `llm_tokens_per_second` — GPU inference throughput derived from `eval_duration` |
 
 ![Grafana Dashboard](docs/images/grafana-benchmark.png)
 
@@ -184,11 +195,11 @@ Three deployment strategies were benchmarked under identical workload conditions
 
 ### Results
 
-| Strategy | Pods | Failure Rate | P50 | P95 | Throughput |
-|----------|:----:|:---:|:---:|:---:|:---:|
-| A: Single pod | 1 | **45.5%** ❌ | 15s | 35s | 0.37 req/s |
-| B: HPA dynamic | 2→6 | **0%** ✅ | 26s | 28s | 0.34 req/s |
-| C: Pre-scaled | 4 | **0%** ✅ | 22s | **24s** | **0.40 req/s** |
+| Strategy | Gateway Pods | GPU Backend | Failure Rate | P50 | P95 | Throughput | Bottleneck |
+|----------|:---:|:---:|:---:|:---:|:---:|:---:|:---|
+| A: Single pod | 1 | 1× GTX 1650 | **45.5%** ❌ | 15s | 35s | 0.37 req/s | API queue overflow + GPU serialization |
+| B: HPA dynamic | 2→6 | 1× GTX 1650 | **0%** ✅ | 26s | 28s | 0.34 req/s | HPA warm-up lag + shared GPU backend |
+| C: Pre-scaled | 4 | 1× GTX 1650 | **0%** ✅ | 22s | **24s** | **0.40 req/s** | Shared GPU backend |
 
 **Scenario A — Single pod**
 
@@ -207,33 +218,42 @@ Three deployment strategies were benchmarked under identical workload conditions
 
 ### Interpretation
 
-Single-pod deployment fails under modest load due to Ollama's serial request queue overflowing (HTTP 502). Both multi-pod configurations eliminate failures. Pre-scaling achieves the lowest P95 latency (24s) because pods are already warm when requests arrive. HPA dynamic scaling introduces a 30–60 second scale-up lag, temporarily increasing latency during the ramp-up window.
+Single-pod deployment fails under modest load due to Ollama's serial request queue overflowing (HTTP 502). Both multi-pod configurations eliminate failures entirely.
+
+A key finding emerges from the throughput numbers: **adding gateway pods from 2 to 4 increases throughput by only 0.06 req/s** (0.34 → 0.40 req/s). This near-flat throughput curve reveals that the bottleneck is the **shared GPU backend**, not the API gateway layer. All requests — regardless of pod count — ultimately serialize through the single Ollama runtime on the host GPU.
+
+This exposes two distinct scaling dimensions:
+- **Gateway scalability** — handled by Kubernetes HPA; eliminates request queue overflow and 502 errors
+- **Accelerator capacity** — fixed by hardware; true horizontal scaling requires multiple GPU nodes or a batching-capable runtime (vLLM, Triton)
+
+Pre-scaling achieves the lowest P95 latency (24s) because pods are already warm when requests arrive. HPA dynamic scaling introduces a 30–60 second scale-up lag, temporarily increasing latency during the ramp-up window, but reduces idle resource cost during low-traffic periods.
 
 ### Limitations
 
 These results should be interpreted within the constraints of the test environment:
 
 - **Local k3d cluster** running inside Docker on a single Windows host — not representative of a multi-node cloud deployment
-- **GTX 1650 Max-Q (4GB VRAM)** — a consumer-grade GPU; inference throughput and latency would differ significantly on production hardware (e.g., NVIDIA A10G)
+- **GTX 1650 Max-Q (4GB VRAM)** — a consumer-grade GPU (~20 tokens/sec); inference throughput and latency would differ significantly on production hardware (e.g., NVIDIA A10G at ~200+ tokens/sec)
 - **10 concurrent users** — a small-scale workload; behavior at 50–500 users is not captured
-- **CPU-based HPA** — LLM inference load is not well-reflected by CPU utilization, which may delay or suppress appropriate scaling responses
+- **CPU-based HPA** — LLM inference load is not well-reflected by CPU utilization; KEDA with queue depth or tokens/sec would be a more accurate scaling signal
 
 ---
 
 ## Architecture Decision Record
 
-A full ADR is available at [`docs/adr-inference-strategy.md`](docs/adr-inference-strategy.md). Key decisions are summarized below.
+A full ADR is available at [`docs/adr-inference-strategy.md`](docs/adr-inference-strategy.md), including GPU bottleneck analysis and production deployment path. Key decisions are summarized below.
 
 | Decision | Rationale |
 |----------|-----------|
-| FastAPI as inference layer | Async support for concurrent requests; straightforward OpenAI-schema compatibility; built-in Prometheus integration via `prometheus-client` |
-| Docker multi-stage build | Separates dependency installation from the runtime image, reducing final image size and attack surface |
-| Kubernetes + HPA | Enables declarative replica management and reactive scaling; separates infrastructure concerns from application code |
-| CPU-based HPA at 70% | A practical threshold given the local resource constraints; KEDA with request queue depth would be more accurate for LLM workloads |
-| Prometheus + Grafana | Standard observability stack for Kubernetes; ServiceMonitor enables automatic scrape target discovery without modifying application configuration |
-| Benchmark: three strategies | Isolates the effect of pod count and scaling behavior on reliability and latency; provides data to justify a deployment recommendation |
+| FastAPI as inference layer | Async support for concurrent requests; OpenAI-schema compatibility; built-in Prometheus integration |
+| Docker multi-stage build | Separates dependency installation from runtime image, reducing size and attack surface |
+| Kubernetes + HPA | Declarative replica management and reactive scaling; separates infrastructure from application code |
+| CPU-based HPA at 70% | Practical threshold for local constraints; KEDA with request queue depth would be more accurate for LLM workloads |
+| Prometheus + Grafana | Standard Kubernetes observability stack; ServiceMonitor enables automatic scrape target discovery |
+| `llm_tokens_per_second` metric | Uses Ollama `eval_duration` (pure GPU execution time) rather than end-to-end latency, isolating accelerator throughput from network overhead |
+| Benchmark: three strategies | Isolates effect of pod count and scaling behavior; provides data to justify deployment recommendation |
 
-**Recommendation:** HPA dynamic scaling (Scenario B) for variable-traffic workloads. Pre-scaling (Scenario C) is preferred when latency is the primary constraint and traffic is predictable.
+**Recommendation:** HPA dynamic scaling (Scenario B) for variable-traffic workloads. Pre-scaling (Scenario C) preferred when latency is the primary constraint and traffic is predictable. For true throughput scaling, replace Ollama with vLLM or Triton on GPU-enabled nodes.
 
 ---
 
@@ -242,14 +262,15 @@ A full ADR is available at [`docs/adr-inference-strategy.md`](docs/adr-inference
 ```
 llm-inference-platform/
 ├── app/
-│   ├── main.py                    # FastAPI inference wrapper
+│   ├── main.py                    # FastAPI inference wrapper + Prometheus metrics
 │   └── requirements.txt
 ├── docker/
 │   └── Dockerfile                 # Multi-stage build
 ├── k8s/
 │   ├── deployment.yaml
 │   ├── service.yaml
-│   └── hpa.yaml
+│   ├── hpa.yaml
+│   └── gpu-deployment.example.yaml  # Production GPU node reference (NVIDIA Device Plugin)
 ├── monitoring/
 │   ├── servicemonitor.yaml
 │   └── grafana-dashboard.json
@@ -257,7 +278,7 @@ llm-inference-platform/
 │   ├── locustfile.py
 │   └── results/                   # Locust CSV outputs (A / B / C)
 ├── docs/
-│   ├── adr-inference-strategy.md
+│   ├── adr-inference-strategy.md  # Full ADR with GPU bottleneck analysis
 │   ├── phase1-setup-log.md
 │   ├── phase2-setup-log.md
 │   ├── phase3-setup-log.md
