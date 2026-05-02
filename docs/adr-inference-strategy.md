@@ -1,18 +1,20 @@
 # ADR-001: LLM Inference Deployment Strategy
 
+This document records the deployment strategy evaluation for a Kubernetes-hosted LLM inference service. The goal was to systematically compare how deployment configuration affects reliability, latency, and resource usage under concurrent load — moving beyond a basic inference API into measurable architecture trade-offs.
+
 ---
 
 ## Context
 
-We are deploying a production-style LLM inference service (Phi-3 Mini via Ollama, wrapped in FastAPI) on a Kubernetes cluster. The service must handle variable concurrent load while balancing latency, reliability, and resource cost.
+The inference service wraps Phi-3 Mini (via Ollama) in a FastAPI layer and runs on a local Kubernetes cluster. The service needs to handle variable concurrent load while balancing latency, reliability, and resource cost.
 
-The core question: **which pod scaling strategy best serves LLM inference workloads?**
+The central question: **which pod scaling strategy best serves this LLM inference workload?**
 
-LLM inference has unique characteristics that make this decision non-trivial:
-- High per-request latency (seconds, not milliseconds)
-- GPU/CPU resource contention under concurrent load
-- Cold-start penalty when new pods initialize
-- Unpredictable token generation length affects response time
+LLM inference has characteristics that make this a non-trivial systems problem:
+- Per-request latency is measured in seconds, not milliseconds
+- GPU and CPU resources contend under concurrent load
+- New pods incur a cold-start penalty before becoming ready
+- Token generation length is variable, affecting tail latency
 
 ---
 
@@ -31,7 +33,8 @@ Deploy a fixed pool of 4 replicas. Maximum throughput at the cost of always-on r
 
 ## Benchmark Results
 
-All scenarios tested under 10 concurrent users, 60-second duration, fixed 50-token prompt on GTX 1650 Max-Q (4GB VRAM), k3d local cluster.
+All scenarios tested under 10 concurrent users, 60-second duration, fixed 50-token prompt.
+Hardware: NVIDIA GTX 1650 Max-Q (4GB VRAM), k3d local cluster.
 
 | Metric | Scenario A (1 Pod) | Scenario B (HPA 2→6) | Scenario C (4 Pods) |
 |--------|-------------------|----------------------|---------------------|
@@ -56,59 +59,59 @@ All scenarios tested under 10 concurrent users, 60-second duration, fixed 50-tok
 | Failure Rate | 45% ❌ | 0% ✅ | 0% ✅ |
 | Throughput | 0.37 req/s ❌ | 0.34 req/s ✅ | 0.40 req/s ✅✅ |
 | Idle Cost | Low ✅✅ | Medium ✅ | High ❌ |
-| Scale-up Lag | N/A | 30-60s ⚠️ | None ✅✅ |
+| Scale-up Lag | N/A | 30–60s ⚠️ | None ✅✅ |
 | Operational Complexity | Low ✅✅ | Medium ✅ | Low ✅✅ |
 | Cold-start Risk | High ❌ | Medium ⚠️ | Low ✅ |
-| Production Readiness | ❌ | ✅ | ✅✅ |
 
 ---
 
 ## Decision
 
-**Recommended: Scenario B (HPA Dynamic Scaling)** for production workloads with variable traffic.
+**Recommended: Scenario B (HPA Dynamic Scaling)** for variable-traffic workloads.
 
 **Rationale:**
 
-1. **Reliability over raw performance.** Scenario A's 45% failure rate is unacceptable in any production environment. Both B and C achieve 0% failure rate.
+1. **Reliability over raw performance.** Scenario A's 45% failure rate is unacceptable under any reasonable load. Both B and C achieve 0% failure rate.
 
-2. **Cost efficiency at scale.** Scenario C's 4-pod static fleet consumes 4x the resources at idle. For a real deployment, this means 4x compute cost even during off-peak hours. HPA scales down to 2 pods when load is low.
+2. **Cost efficiency.** Scenario C's 4-pod static fleet consumes 4× the idle resources. HPA scales down to minReplicas=2 during low-traffic periods, reducing waste.
 
-3. **P95 latency is acceptable.** HPA achieves P95=28s vs C's 24s — a 4-second difference that is within acceptable range for LLM inference workloads where users already expect multi-second responses.
+3. **Latency trade-off is acceptable.** HPA achieves P95=28s versus C's 24s — a 4-second difference that is within a reasonable range for workloads where multi-second responses are already expected.
 
-4. **Operational flexibility.** HPA automatically responds to traffic spikes without manual intervention, which aligns with AI factory operational principles.
+4. **Operational simplicity.** HPA responds automatically to load changes, avoiding the need for manual scaling decisions.
 
-**Exception:** Scenario C is preferred for **latency-sensitive, predictable-load** use cases (e.g., batch processing pipelines, real-time voice interfaces) where the 4s P95 improvement justifies the cost premium.
+**Exception:** Scenario C is preferred for latency-sensitive, predictable-load use cases (e.g., batch processing pipelines or real-time voice interfaces) where the 4s P95 improvement justifies the higher idle cost.
 
 ---
 
 ## Consequences
 
 ### Positive
-- 0% failure rate under 10 concurrent users with HPA
+- 0% failure rate under 10 concurrent users
 - Automatic scale-out during traffic spikes (up to 6 pods)
 - Automatic scale-in during low traffic reduces idle cost
 - No manual intervention required for typical load patterns
 
 ### Negative
-- HPA scale-up introduces 30-60 second lag before new pods become ready
-- During scale-up window, existing pods absorb increased load, temporarily increasing latency
+- HPA scale-up introduces 30–60 second lag before new pods are ready
+- During the scale-up window, existing pods absorb additional load
 - Minimum 2 pods always running (cannot scale to zero without KEDA)
 
-### Risks & Mitigations
+### Risks and Mitigations
+
 | Risk | Mitigation |
-|------|-----------|
-| Scale-up lag causes latency spikes | Pre-warm with minReplicas=2; tune HPA scale-up stabilization window |
-| GPU memory contention with multiple pods | Each pod shares CPU inference; GPU used by Ollama directly — not per-pod |
-| HPA thrashing (rapid scale up/down) | Set `scaleDown.stabilizationWindowSeconds: 300` in HPA spec |
+|------|------------|
+| Scale-up lag causes latency spikes | Pre-warm with `minReplicas=2`; tune HPA scale-up stabilization window |
+| GPU memory contention across pods | Ollama holds the GPU directly; FastAPI pods use CPU only |
+| HPA thrashing under oscillating load | Set `scaleDown.stabilizationWindowSeconds: 300` in HPA spec |
 
 ---
 
-## Future Considerations
+## Future Directions
 
-- **KEDA (Kubernetes Event-driven Autoscaling):** Scale on request queue depth rather than CPU — more accurate for LLM workloads where CPU may not reflect actual inference load
-- **vLLM migration:** Replace Ollama with vLLM for continuous batching, which would dramatically improve throughput and reduce per-request latency
-- **AWS EKS + GPU nodes:** Move from local k3d to cloud deployment with NVIDIA A10G instances for production-grade GPU inference
-- **Request queuing:** Add Redis-based queue in front of the inference service to absorb burst traffic and prevent 502 errors
+- **KEDA:** Scale on request queue depth rather than CPU utilization — more meaningful for LLM workloads where CPU does not directly reflect inference load
+- **vLLM:** Replace Ollama with vLLM for continuous batching, which would substantially improve throughput and reduce per-request latency
+- **Cloud deployment:** Move from local k3d to a cloud cluster with GPU-enabled nodes for production-scale evaluation
+- **Request queuing:** Add a queue layer (e.g., Redis) in front of the inference service to absorb burst traffic without 502 errors
 
 ---
 
@@ -118,4 +121,4 @@ All scenarios tested under 10 concurrent users, 60-second duration, fixed 50-tok
 - Model: Phi-3 Mini (2.2GB, 4-bit quantized)
 - Hardware: NVIDIA GTX 1650 Max-Q (4GB VRAM), 16GB RAM
 - Cluster: k3d v5.8.3 (k3s v1.31.5), 1 server + 2 agents
-- Test parameters: 10 concurrent users, ramp 2/s, 60s duration
+- Test parameters: 10 concurrent users, ramp 2 users/s, 60s duration

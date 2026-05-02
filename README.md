@@ -1,72 +1,84 @@
 # LLM Inference Platform on Kubernetes
 
-A production-style LLM inference platform built as part of an Advanced LLM Techniques course project, extended with full Kubernetes orchestration, HPA auto-scaling, and an observability stack.
+A production-style LLM inference platform built to explore serving, orchestration, and benchmarking as a systems engineering problem. The project covers containerization, Kubernetes deployment with HPA auto-scaling, Prometheus/Grafana observability, and load-tested architecture comparisons across three scaling strategies.
 
-Features containerized LLM serving with an OpenAI-compatible API, benchmark-driven architecture decisions, and a Prometheus + Grafana monitoring dashboard.
-
-
+The core question driving the architecture work: **how should a Kubernetes-based LLM inference service be scaled, and what are the measurable trade-offs between deployment strategies?**
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Client / Locust                       │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ HTTP POST /v1/chat/completions
-┌──────────────────────────▼──────────────────────────────────┐
-│              Kubernetes Service (ClusterIP:8000)             │
-│  ┌─────────────────┐  ┌─────────────────┐                   │
-│  │  FastAPI Pod 1  │  │  FastAPI Pod 2  │  ← HPA: 2-6 pods  │
-│  │  (llm-inference)│  │  (llm-inference)│                   │
-│  └────────┬────────┘  └────────┬────────┘                   │
-│           └──────────┬─────────┘                            │
-│                      │ /metrics (Prometheus format)          │
-│  ┌───────────────────▼─────────────────────────────────┐    │
-│  │         ServiceMonitor → Prometheus → Grafana        │    │
-│  └─────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │   Ollama + Phi-3 Mini   │
-              │   (WSL2, GTX 1650 GPU)  │
-              └─────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      Client / Locust                         │
+└─────────────────────────┬────────────────────────────────────┘
+                          │ POST /v1/chat/completions
+┌─────────────────────────▼────────────────────────────────────┐
+│             Kubernetes Service (ClusterIP:8000)               │
+│  ┌──────────────────┐  ┌──────────────────┐                  │
+│  │  FastAPI Pod 1   │  │  FastAPI Pod 2   │  ← HPA: 2–6 pods │
+│  └────────┬─────────┘  └────────┬─────────┘                  │
+│           └─────────────────────┘                            │
+│                        /metrics                              │
+│  ┌───────────────────────────────────────────────────────┐   │
+│  │      ServiceMonitor → Prometheus → Grafana            │   │
+│  └───────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────┘
+                          │
+             ┌────────────▼────────────┐
+             │   Ollama + Phi-3 Mini   │
+             │   (WSL2, GTX 1650 GPU)  │
+             └─────────────────────────┘
 ```
+
+Each FastAPI pod forwards requests to an Ollama backend running on the host machine via `host.docker.internal`. Prometheus scrapes `/metrics` from each pod through a Kubernetes `ServiceMonitor`, and Grafana renders the collected time-series data.
 
 ---
 
 ## Tech Stack
 
-| Layer | Tool | Purpose |
-|-------|------|---------|
-| Model Serving | Ollama + Phi-3 Mini (2.2GB) | GPU-accelerated LLM inference |
-| API Layer | FastAPI + Python 3.11 | OpenAI-compatible `/v1/chat/completions` |
-| Containerization | Docker (multi-stage build) | Slim production image |
-| Orchestration | k3d (local Kubernetes) | k3s cluster inside Docker |
-| Auto-scaling | Kubernetes HPA (autoscaling/v2) | CPU-based pod scaling (2→6) |
-| Observability | Prometheus + Grafana | P95 latency, request rate, error rate |
-| Load Testing | Locust 2.43.4 | Concurrent user simulation |
-| OS / GPU | WSL2 Ubuntu 24.04 + NVIDIA GTX 1650 | CUDA 13.2, Driver 596.36 |
+| Layer | Tool | Notes |
+|-------|------|-------|
+| Model Serving | Ollama + Phi-3 Mini (2.2 GB) | GPU-accelerated via GTX 1650 Max-Q |
+| Inference API | FastAPI + Python 3.11 | OpenAI-compatible `/v1/chat/completions` |
+| Containerization | Docker (multi-stage build) | Slim runtime image |
+| Orchestration | k3d (local Kubernetes) | k3s cluster running inside Docker |
+| Auto-scaling | Kubernetes HPA (autoscaling/v2) | CPU-based scaling, min=2 / max=6 pods |
+| Observability | Prometheus + Grafana | Latency histograms, request rate, error rate |
+| Load Testing | Locust 2.43.4 | Headless concurrent-user simulation |
+| Environment | WSL2 Ubuntu 24.04 + Windows 11 | NVIDIA Driver 596.36, CUDA 13.2 |
+
+---
+
+## Key Features
+
+- OpenAI-compatible REST API with streaming and non-streaming response modes
+- `/health` endpoint for Kubernetes readiness and liveness probes
+- `/metrics` endpoint exposing Prometheus-format counters and histograms
+- Multi-stage Dockerfile producing a minimal runtime image
+- Kubernetes Deployment with CPU resource requests and limits
+- Horizontal Pod Autoscaler targeting 70% average CPU utilization
+- Grafana dashboard with request rate, P50/P95/P99 latency, error rate, and pod count panels
+- Benchmark suite comparing three deployment strategies under concurrent load
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Clone repo
+# 1. Clone the repository
 git clone https://github.com/qw486759/llm-inference-platform
 cd llm-inference-platform
 
-# 2. Build Docker image
+# 2. Build the Docker image
 docker build -f docker/Dockerfile -t llm-inference:v1 .
 
-# 3. Create k3d cluster and deploy
+# 3. Create a local k3d cluster and deploy
 k3d cluster create llm-cluster --agents 2
 k3d image import llm-inference:v1 -c llm-cluster
 kubectl apply -f k8s/
 
-# 4. Deploy observability stack
+# 4. Deploy the observability stack
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
 kubectl create namespace monitoring
@@ -76,10 +88,13 @@ helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
 kubectl apply -f monitoring/servicemonitor.yaml
 
-# 5. Access services
-kubectl port-forward svc/llm-inference 8000:8000        # API
-kubectl port-forward svc/kube-prometheus-stack-grafana 3000:80 -n monitoring  # Grafana (admin/admin123)
+# 5. Access the services
+kubectl port-forward svc/llm-inference 8000:8000
+kubectl port-forward svc/kube-prometheus-stack-grafana 3000:80 -n monitoring
 ```
+
+Grafana is available at `http://localhost:3000` (credentials: `admin` / `admin123`).  
+Import `monitoring/grafana-dashboard.json` to load the pre-built dashboard.
 
 ---
 
@@ -95,107 +110,130 @@ curl -s http://localhost:8000/v1/chat/completions \
   }'
 ```
 
+**Response:**
 ```json
 {
   "id": "3b5a94ec",
   "object": "chat.completion",
   "model": "phi3:mini",
   "choices": [{
+    "index": 0,
     "message": {"role": "assistant", "content": "..."},
     "finish_reason": "stop"
   }],
-  "usage": {"prompt_tokens": 20, "completion_tokens": 45, "total_tokens": 65}
+  "usage": {
+    "prompt_tokens": 20,
+    "completion_tokens": 45,
+    "total_tokens": 65
+  }
 }
 ```
 
 ![K8s API Response](docs/images/k8s-api-response.png)
-*OpenAI-compatible response from FastAPI wrapper running on Kubernetes*
 
 ---
 
 ## Kubernetes Deployment
 
-![K8s Deploy + HPA](docs/images/k8s-deploy-hpa.png)
-*kubectl apply result: Deployment + HPA + Service created. HPA showing cpu: 3%/70% with 2 pods Running*
+The service is deployed as a Kubernetes `Deployment` with two initial replicas, a `ClusterIP` Service, and a `HorizontalPodAutoscaler`. Resource limits (`500m` CPU, `512Mi` memory) are set per pod to prevent resource contention in the local cluster.
+
+```bash
+kubectl apply -f k8s/
+kubectl get pods
+kubectl get hpa
+```
+
+![K8s Deployment and HPA](docs/images/k8s-deploy-hpa.png)
 
 ---
 
 ## Observability
 
-Grafana dashboard (`monitoring/grafana-dashboard.json`) includes 4 panels:
+Prometheus scrapes `/metrics` from each pod every 15 seconds via a `ServiceMonitor` resource. The Grafana dashboard tracks four panels:
 
-- **Request Rate** — req/sec by status (success/error)
-- **Latency Histogram** — P50, P95, P99 percentiles
-- **Error Rate** — percentage of failed requests
-- **Pod Count** — HPA current/max replicas over time
+| Panel | Metric |
+|-------|--------|
+| Request Rate | `rate(llm_requests_total[1m])` |
+| Latency Histogram | P50, P95, P99 via `histogram_quantile` |
+| Error Rate | Error requests as a fraction of total |
+| Pod Count | HPA current and maximum replica counts |
 
-Import via: Grafana → Dashboards → New → Import → Upload JSON
-
-![Grafana Dashboard during Benchmark](docs/images/grafana-benchmark.png)
-*Live dashboard during Locust benchmark — Request Rate spikes, HPA scaling from 2→4 pods, P95 latency tracked in real time*
-
-![Grafana Dashboard](docs/images/grafana-dashboard.png)
-*Dashboard after initial 10-request test — P50=1.56s, P95=23.1s, 0% error rate, 2 Ready Pods*
+![Grafana Dashboard](docs/images/grafana-benchmark.png)
 
 ---
 
-## Benchmark Results
+## Benchmark
 
-Tested under **10 concurrent users**, **60-second duration** on GTX 1650 Max-Q (4GB VRAM).
+### Methodology
+
+Three deployment strategies were benchmarked under identical workload conditions to measure the trade-offs between reliability, latency, throughput, and resource usage.
+
+| Parameter | Value |
+|-----------|-------|
+| Tool | Locust 2.43.4 |
+| Concurrent users | 10 |
+| Ramp rate | 2 users/sec |
+| Duration | 60 seconds |
+| Prompt | Fixed ~50-token prompt (HPA explanation) |
+| Max tokens | 50 |
+
+**Scenarios:**
+- **A — Single pod:** 1 replica, HPA disabled
+- **B — HPA dynamic:** min=2, max=6 pods, CPU target=70%
+- **C — Pre-scaled:** 4 static replicas, HPA disabled
+
+### Results
 
 | Strategy | Pods | Failure Rate | P50 | P95 | Throughput |
-|----------|------|:---:|:---:|:---:|:---:|
-| A: Single Pod | 1 | **45.5%** ❌ | 15s | 35s | 0.37 req/s |
-| B: HPA Dynamic | 2→6 | **0%** ✅ | 26s | 28s | 0.34 req/s |
+|----------|:----:|:---:|:---:|:---:|:---:|
+| A: Single pod | 1 | **45.5%** ❌ | 15s | 35s | 0.37 req/s |
+| B: HPA dynamic | 2→6 | **0%** ✅ | 26s | 28s | 0.34 req/s |
 | C: Pre-scaled | 4 | **0%** ✅ | 22s | **24s** | **0.40 req/s** |
 
-**Key finding:** Single-pod deployment fails under minimal load (10 users). HPA eliminates failures with automatic cost optimization. Pre-scaling achieves best latency at higher resource cost.
+**Scenario A — Single pod**
 
-→ Full analysis: [docs/adr-inference-strategy.md](docs/adr-inference-strategy.md)
-
----
-
-### Scenario A — Single Pod (1 replica)
-
-![Locust Scenario A Start](docs/images/locust-scenario-a-start.png)
-*Setup: 1 pod confirmed Running before test start*
-
+![Locust Scenario A Setup](docs/images/locust-scenario-a-start.png)
 ![Locust Scenario A Result](docs/images/locust-scenario-a.png)
-*Result: 45.5% failure rate, P50=15s, P95=35s, 10x HTTP 502 — single pod overwhelmed by 10 concurrent users*
 
----
+**Scenario B — HPA dynamic scaling**
 
-### Scenario B — HPA Dynamic (min=2, max=6)
-
-![Locust Scenario B Start](docs/images/locust-scenario-b-start.png)
-*Setup: 2 pods Running (HPA min=2), scenario-b test starting*
-
+![Locust Scenario B Setup](docs/images/locust-scenario-b-start.png)
 ![Locust Scenario B Result](docs/images/locust-scenario-b.png)
-*Result: 0% failure rate, P50=26s, P95=28s — HPA distributes load across pods*
 
----
+**Scenario C — Pre-scaled static fleet**
 
-### Scenario C — Pre-scaled (4 replicas)
-
-![Locust Scenario C Start](docs/images/locust-scenario-c-start.png)
-*Setup: 4 pods all Running before test start*
-
+![Locust Scenario C Setup](docs/images/locust-scenario-c-start.png)
 ![Locust Scenario C Result](docs/images/locust-scenario-c.png)
-*Result: 0% failure rate, P50=22s, P95=24s — best latency with pre-warmed pod pool*
+
+### Interpretation
+
+Single-pod deployment fails under modest load due to Ollama's serial request queue overflowing (HTTP 502). Both multi-pod configurations eliminate failures. Pre-scaling achieves the lowest P95 latency (24s) because pods are already warm when requests arrive. HPA dynamic scaling introduces a 30–60 second scale-up lag, temporarily increasing latency during the ramp-up window.
+
+### Limitations
+
+These results should be interpreted within the constraints of the test environment:
+
+- **Local k3d cluster** running inside Docker on a single Windows host — not representative of a multi-node cloud deployment
+- **GTX 1650 Max-Q (4GB VRAM)** — a consumer-grade GPU; inference throughput and latency would differ significantly on production hardware (e.g., NVIDIA A10G)
+- **10 concurrent users** — a small-scale workload; behavior at 50–500 users is not captured
+- **CPU-based HPA** — LLM inference load is not well-reflected by CPU utilization, which may delay or suppress appropriate scaling responses
 
 ---
 
-## Key Design Decisions
+## Architecture Decision Record
 
-See [docs/adr-inference-strategy.md](docs/adr-inference-strategy.md) for full Architecture Decision Record.
+A full ADR is available at [`docs/adr-inference-strategy.md`](docs/adr-inference-strategy.md). Key decisions are summarized below.
 
 | Decision | Rationale |
 |----------|-----------|
-| `imagePullPolicy: Never` | Forces k3d to use locally imported image |
-| `host.docker.internal` for Ollama URL | Container reaches WSL2 host via Docker gateway |
-| HPA autoscaling/v2 | Supports multi-metric scaling; v1 deprecated |
-| Multi-stage Dockerfile | Builder stage installs deps; runtime stage is slim |
-| ServiceMonitor label `release: kube-prometheus-stack` | Required for Prometheus Operator auto-discovery |
+| FastAPI as inference layer | Async support for concurrent requests; straightforward OpenAI-schema compatibility; built-in Prometheus integration via `prometheus-client` |
+| Docker multi-stage build | Separates dependency installation from the runtime image, reducing final image size and attack surface |
+| Kubernetes + HPA | Enables declarative replica management and reactive scaling; separates infrastructure concerns from application code |
+| CPU-based HPA at 70% | A practical threshold given the local resource constraints; KEDA with request queue depth would be more accurate for LLM workloads |
+| Prometheus + Grafana | Standard observability stack for Kubernetes; ServiceMonitor enables automatic scrape target discovery without modifying application configuration |
+| Benchmark: three strategies | Isolates the effect of pod count and scaling behavior on reliability and latency; provides data to justify a deployment recommendation |
+
+**Recommendation:** HPA dynamic scaling (Scenario B) for variable-traffic workloads. Pre-scaling (Scenario C) is preferred when latency is the primary constraint and traffic is predictable.
 
 ---
 
@@ -209,35 +247,23 @@ llm-inference-platform/
 ├── docker/
 │   └── Dockerfile                 # Multi-stage build
 ├── k8s/
-│   ├── deployment.yaml            # 2 replicas, resource limits
-│   ├── service.yaml               # ClusterIP:8000
-│   └── hpa.yaml                   # min=2, max=6, CPU=70%
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── hpa.yaml
 ├── monitoring/
-│   ├── servicemonitor.yaml        # Prometheus scrape config
-│   └── grafana-dashboard.json     # 4-panel dashboard
+│   ├── servicemonitor.yaml
+│   └── grafana-dashboard.json
 ├── benchmark/
-│   ├── locustfile.py              # Load test script
-│   └── results/                   # CSV outputs (A/B/C)
+│   ├── locustfile.py
+│   └── results/                   # Locust CSV outputs (A / B / C)
 ├── docs/
-│   ├── adr-inference-strategy.md  # Architecture Decision Record
+│   ├── adr-inference-strategy.md
 │   ├── phase1-setup-log.md
 │   ├── phase2-setup-log.md
 │   ├── phase3-setup-log.md
 │   ├── phase4-setup-log.md
 │   ├── phase5-benchmark-log.md
 │   └── images/
-│       ├── grafana-benchmark.png
-│       ├── grafana-dashboard.png
-│       ├── k8s-deploy-hpa.png
-│       ├── k8s-api-response.png
-│       ├── prometheus-metrics.png
-│       ├── docker-api-response.png
-│       ├── locust-scenario-a-start.png
-│       ├── locust-scenario-a.png
-│       ├── locust-scenario-b-start.png
-│       ├── locust-scenario-b.png
-│       ├── locust-scenario-c-start.png
-│       └── locust-scenario-c.png
 └── README.md
 ```
 

@@ -1,69 +1,38 @@
 # Phase 4 — Prometheus + Grafana Observability
 
-**Goal:** Deploy full observability stack on k3d cluster, configure Prometheus scraping, build LLM monitoring dashboard
+This phase deploys a full observability stack using the `kube-prometheus-stack` Helm chart, configures Prometheus to scrape the inference service's `/metrics` endpoint, and builds a Grafana dashboard to visualize request rate, latency distribution, error rate, and pod scaling behavior.
 
 ---
 
-## ✅ Checklist
+## Checklist
 
 | Step | Status |
 |------|--------|
 | Helm v3.20.2 installed | ✅ |
 | kube-prometheus-stack deployed | ✅ |
-| Prometheus scraping llm metrics | ✅ |
+| Prometheus scraping LLM metrics | ✅ |
 | ServiceMonitor configured | ✅ |
 | Grafana accessible (port 3000) | ✅ |
 | Dashboard imported with 4 panels | ✅ |
-| Request Rate panel | ✅ |
-| Latency P50/P95/P99 panel | ✅ |
-| Error Rate panel | ✅ |
-| Pod Count / HPA panel | ✅ |
 
 ---
 
 ## Installation
 
 ```bash
-# Install Helm
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-helm version --short
-# v3.20.2
-
-# Add Prometheus community repo
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-
-# Create monitoring namespace
 kubectl create namespace monitoring
-
-# Install kube-prometheus-stack
 helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --set grafana.adminPassword=admin123 \
-  --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
+kubectl apply -f monitoring/servicemonitor.yaml
 ```
 
 ---
 
-## All Pods Running
-
-```
-$ kubectl --namespace monitoring get pods
-NAME                                                        READY   STATUS    RESTARTS   AGE
-alertmanager-kube-prometheus-stack-alertmanager-0           2/2     Running   0          83s
-kube-prometheus-stack-grafana-6d9f95c484-54hkt              3/3     Running   0          95s
-kube-prometheus-stack-kube-state-metrics-864fbc65cf-sqldt   1/1     Running   0          95s
-kube-prometheus-stack-operator-787d757cb-hxlt2              1/1     Running   0          95s
-kube-prometheus-stack-prometheus-node-exporter-9s2r6        1/1     Running   0          95s
-kube-prometheus-stack-prometheus-node-exporter-pf8gk        1/1     Running   0          95s
-kube-prometheus-stack-prometheus-node-exporter-zcksf        1/1     Running   0          95s
-prometheus-kube-prometheus-stack-prometheus-0               2/2     Running   0          83s
-```
-
----
-
-## monitoring/servicemonitor.yaml
+## ServiceMonitor
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -86,9 +55,11 @@ spec:
     interval: 15s
 ```
 
+The `release: kube-prometheus-stack` label is required — the Prometheus Operator uses this label to determine which ServiceMonitors to include in its scrape configuration. Without it, the monitor is silently ignored.
+
 ---
 
-## Prometheus Metrics Verified
+## Prometheus Metrics Confirmed
 
 ```bash
 $ curl -s http://localhost:9090/api/v1/label/__name__/values | python3 -m json.tool | grep llm
@@ -101,22 +72,20 @@ $ curl -s http://localhost:9090/api/v1/label/__name__/values | python3 -m json.t
 
 ---
 
-## Access Commands
+## Dashboard Panels
 
-```bash
-# Grafana (admin / admin123)
-kubectl port-forward svc/kube-prometheus-stack-grafana 3000:80 -n monitoring
+| Panel | PromQL |
+|-------|--------|
+| Request Rate | `rate(llm_requests_total[1m])` |
+| Latency P50/P95/P99 | `histogram_quantile(0.95, rate(llm_request_latency_seconds_bucket[5m]))` |
+| Error Rate | Error requests / total requests |
+| Pod Count | `kube_deployment_status_replicas_ready` + HPA current/max |
 
-# Prometheus
-kubectl port-forward svc/kube-prometheus-stack-prometheus 9090:9090 -n monitoring
-
-# LLM Inference API
-kubectl port-forward svc/llm-inference 8000:8000
-```
+Import `monitoring/grafana-dashboard.json` into Grafana to restore all panels.
 
 ---
 
-## Dashboard Results (10 test requests)
+## Initial Results (10 test requests)
 
 | Metric | Value |
 |--------|-------|
@@ -126,28 +95,15 @@ kubectl port-forward svc/llm-inference 8000:8000
 | Latency P99 | 28.6s |
 | Error Rate | 0% |
 | Ready Pods | 2 |
-| HPA Current | 2 |
-| HPA Max | 6 |
-
----
-
-## Key Design Decisions
-
-- **serviceMonitorSelectorNilUsesHelmValues=false** — Allows Prometheus to discover ServiceMonitors outside the Helm release namespace
-- **ServiceMonitor label `release: kube-prometheus-stack`** — Must match the Helm release name for Prometheus operator to pick it up
-- **15s scrape interval** — Balances metric freshness vs Prometheus storage overhead
-- **Dashboard JSON stored in repo** — Enables one-click dashboard restore; no manual panel recreation needed
 
 ---
 
 ## Data Flow
 
 ```
-llm-inference Pod (/metrics)
-    → ServiceMonitor (every 15s)
-    → Prometheus (stores time-series)
-    → Grafana (queries via PromQL)
-    → Dashboard panels
+FastAPI pod (/metrics)
+  → ServiceMonitor (scrape every 15s)
+  → Prometheus (time-series storage)
+  → Grafana (PromQL queries)
+  → Dashboard panels
 ```
-
-
