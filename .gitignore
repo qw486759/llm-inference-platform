@@ -1,0 +1,5 @@
+# Backup files
+*.bak
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
