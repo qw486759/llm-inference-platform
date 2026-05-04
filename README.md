@@ -4,6 +4,8 @@ A production-style LLM inference platform built to explore GPU-backed model serv
 
 The core question driving the architecture work: **how should a Kubernetes-based LLM inference service be scaled, and what are the measurable trade-offs between deployment strategies — given that all requests converge on a single GPU backend?**
 
+Beyond request serving, the platform treats inference as an operational workload by layering alerting, validation workflows, and operator-facing runbooks on top of the core GPU/Kubernetes infrastructure.
+
 ---
 
 ## Architecture
@@ -159,7 +161,7 @@ A production GPU deployment reference is available at `k8s/gpu-deployment.exampl
 
 ## Observability
 
-Prometheus scrapes `/metrics` from each pod every 15 seconds via a `ServiceMonitor` resource. The Grafana dashboard tracks four panels:
+Prometheus scrapes `/metrics` from each pod every 15 seconds via a `ServiceMonitor` resource. The Grafana dashboard tracks key service and inference metrics:
 
 | Panel | Metric |
 |-------|--------|
@@ -170,6 +172,21 @@ Prometheus scrapes `/metrics` from each pod every 15 seconds via a `ServiceMonit
 | **Tokens/sec** | `llm_tokens_per_second` — GPU inference throughput derived from `eval_duration` |
 
 ![Grafana Dashboard](docs/images/grafana-benchmark.png)
+
+---
+
+## Operational Use Case
+
+This platform frames GPU-backed LLM inference as an operational workload, not only an application endpoint. In addition to serving OpenAI-compatible responses, the system exposes service-level and inference-level signals that help operators reason about latency, throughput, reliability, and scaling limits.
+
+The observability layer is designed to answer:
+
+- Is the inference gateway healthy under concurrent traffic?
+- Does HPA improve reliability, or only redistribute queue pressure?
+- Is throughput limited by gateway replicas or by the shared GPU runtime?
+- Which metrics should trigger alerts before user-facing degradation occurs?
+
+Benchmark results and the Architecture Decision Record address these questions through measured scaling comparisons and GPU bottleneck analysis. For operational validation and day-2 operations, see [`docs/poc-plan.md`](docs/poc-plan.md) and [`docs/operator-runbook.md`](docs/operator-runbook.md).
 
 ---
 
@@ -273,12 +290,15 @@ llm-inference-platform/
 │   └── gpu-deployment.example.yaml  # Production GPU node reference (NVIDIA Device Plugin)
 ├── monitoring/
 │   ├── servicemonitor.yaml
-│   └── grafana-dashboard.json
+│   ├── grafana-dashboard.json
+│   └── inference-alerts.yml       # Prometheus alerting rules (degradation detection)
 ├── benchmark/
 │   ├── locustfile.py
 │   └── results/                   # Locust CSV outputs (A / B / C)
 ├── docs/
 │   ├── adr-inference-strategy.md  # Full ADR with GPU bottleneck analysis
+│   ├── poc-plan.md                # POC validation runbook
+│   ├── operator-runbook.md        # Day-2 operations and runtime evaluation guide
 │   ├── phase1-setup-log.md
 │   ├── phase2-setup-log.md
 │   ├── phase3-setup-log.md
@@ -304,3 +324,14 @@ llm-inference-platform/
 | Helm | v3.20.2 |
 | Ollama | 0.22.1 |
 | Python | 3.11 (container) / 3.12 (WSL2) |
+
+---
+
+## Further Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [`docs/adr-inference-strategy.md`](docs/adr-inference-strategy.md) | Architecture Decision Record — GPU bottleneck analysis, strategy comparison, production path |
+| [`docs/poc-plan.md`](docs/poc-plan.md) | POC validation runbook — environment prerequisites, deployment phases, success criteria |
+| [`docs/operator-runbook.md`](docs/operator-runbook.md) | Operator guide — Grafana interpretation, runtime evaluation, GPU bottleneck checklist, HPA tuning |
+| [`monitoring/inference-alerts.yml`](monitoring/inference-alerts.yml) | Prometheus alert rules — latency degradation, error rate, HPA capacity, service availability |

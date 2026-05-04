@@ -1,0 +1,99 @@
+# Prometheus Alerting Rules — LLM Inference Platform
+#
+# This file defines Prometheus alerting rules in native rule-group format.
+# To deploy with kube-prometheus-stack, wrap these rules in a PrometheusRule
+# custom resource and apply to the monitoring namespace. See docs/operator-runbook.md.
+#
+# Prerequisites:
+#   - kube-prometheus-stack deployed via Helm (provides kube-state-metrics)
+#   - ServiceMonitor configured to scrape llm-inference pods
+#   - Add namespace labels below if deploying outside the default namespace
+#
+# Metric sources:
+#   - llm_request_latency_seconds_bucket  → FastAPI app (app/main.py)
+#   - llm_requests_total                  → FastAPI app (app/main.py)
+#   - kube_horizontalpodautoscaler_*      → kube-state-metrics
+#   - kube_deployment_status_replicas_available → kube-state-metrics
+
+groups:
+  - name: llm_inference_alerts
+    rules:
+
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(llm_request_latency_seconds_bucket[5m])) by (le)
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: llm-inference
+        annotations:
+          summary: "P95 inference latency above degradation threshold"
+          description: >
+            P95 latency has exceeded 30s for 5 minutes.
+            Threshold is calibrated against the documented 10-user Locust benchmark
+            on GTX 1650 Max-Q (Scenario B: 28s, Scenario C: 24s) — not a production SLO.
+            On A100/H100 + vLLM, expected P95 would differ significantly.
+            Check Ollama backend health and GPU utilization via nvidia-smi.
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(llm_requests_total{status="error"}[5m]))
+            /
+            sum(rate(llm_requests_total[5m]))
+          ) > 0.05
+          # Guard against division by zero during cold-start or no-traffic windows.
+          and
+          sum(rate(llm_requests_total[5m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+          service: llm-inference
+        annotations:
+          summary: "Inference error rate above 5%"
+          description: >
+            More than 5% of inference requests failed based on the 5-minute request-rate window,
+            and the condition persisted for 2 minutes.
+            Check Ollama connectivity, FastAPI gateway logs, and whether the backend
+            is returning HTTP 502 due to request queue overflow.
+
+      - alert: HPAAtMaxCapacity
+        expr: |
+          # Add namespace="default" or your deployment namespace if multiple namespaces are monitored.
+          kube_horizontalpodautoscaler_status_current_replicas{
+            horizontalpodautoscaler="llm-inference-hpa"
+          }
+          >=
+          kube_horizontalpodautoscaler_spec_max_replicas{
+            horizontalpodautoscaler="llm-inference-hpa"
+          }
+        for: 10m
+        labels:
+          severity: warning
+          service: llm-inference
+        annotations:
+          summary: "HPA held at maximum replica count for 10 minutes"
+          description: >
+            The inference gateway HPA has been at its maximum replica count for 10 minutes.
+            Gateway scaling ceiling reached — additional pods will not reduce latency further
+            if the bottleneck is the shared GPU backend rather than the API layer.
+            Consider evaluating vLLM or Triton for concurrent request batching.
+
+      - alert: InferenceServiceDown
+        expr: |
+          kube_deployment_status_replicas_available{
+            deployment="llm-inference"
+          } < 1
+        for: 1m
+        labels:
+          severity: critical
+          service: llm-inference
+        annotations:
+          summary: "LLM inference service has no available replicas"
+          description: >
+            No available replicas detected for the llm-inference deployment.
+            Immediate triage: kubectl describe pods -l app=llm-inference
+            Check image pull status, resource limits, and application startup logs.
