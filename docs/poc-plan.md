@@ -116,11 +116,12 @@ llm-inference-hpa  Deployment/llm-inference  <30%/70%  2         6         2
 # Confirm API is reachable
 kubectl port-forward svc/llm-inference 8000:8000 &
 
-curl -s http://localhost:8000/health
+curl -s http://localhost:8000/live
+curl -s http://localhost:8000/ready
 curl -s http://localhost:8000/metrics | grep llm_requests_total
 ```
 
-**Pass criteria:** `/health` returns `200`, `/metrics` exposes `llm_requests_total` counter.
+**Pass criteria:** `/live` returns `200`, `/ready` returns `200` after Ollama is reachable, `/metrics` exposes `llm_requests_total` counter.
 
 ---
 

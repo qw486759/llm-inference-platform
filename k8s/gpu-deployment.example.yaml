@@ -52,13 +52,13 @@ spec:
           value: "compute,utility"
         readinessProbe:
           httpGet:
-            path: /health
+            path: /ready    # If replacing with vLLM/Triton, update to match that runtime's health endpoint
             port: 8000
           initialDelaySeconds: 30    # Longer delay: GPU model load takes more time
           periodSeconds: 10
         livenessProbe:
           httpGet:
-            path: /health
+            path: /live    # If replacing with vLLM/Triton, update to match that runtime's health endpoint
             port: 8000
           initialDelaySeconds: 60
           periodSeconds: 20

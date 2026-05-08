@@ -13,8 +13,16 @@ help:
 	@echo "  make observe    — Deploy Prometheus + Grafana observability stack"
 	@echo "  make smoke      — Smoke test: liveness, readiness, and inference endpoint"
 	@echo "  make benchmark  — Run Locust benchmark (headless, 10 users, 60s)"
-	@echo "  make all        — build + import + deploy + smoke"
+	@echo "  make cluster     — Create k3d cluster (idempotent)"
+	@echo "  make port-forward — Forward service to localhost:8000 (run in separate terminal)"
+	@echo "  make all        — cluster + build + import + deploy"
 	@echo "  make clean      — Delete k3d cluster"
+
+cluster:
+	k3d cluster list $(CLUSTER_NAME) >/dev/null 2>&1 || k3d cluster create $(CLUSTER_NAME) --agents 2
+
+port-forward:
+	kubectl port-forward svc/llm-inference 8000:8000
 
 build:
 	docker build -f docker/Dockerfile -t $(IMAGE) .
@@ -55,4 +63,4 @@ benchmark:
 clean:
 	k3d cluster delete $(CLUSTER_NAME)
 
-all: build import deploy smoke
+all: cluster build import deploy

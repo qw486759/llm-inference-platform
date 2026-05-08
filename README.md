@@ -75,6 +75,15 @@ Prometheus scrapes `/metrics` from each pod through a Kubernetes `ServiceMonitor
 
 ## Quick Start
 
+Before deploying the Kubernetes gateway, ensure Ollama is running on the host and `phi3:mini` has been pulled:
+
+```bash
+# 0. Start Ollama and pull the model (skip if already running)
+ollama serve &
+ollama pull phi3:mini
+curl -s http://localhost:11434/api/tags
+```
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/qw486759/llm-inference-platform
