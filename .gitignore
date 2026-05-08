@@ -4,3 +4,5 @@
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/benchmark/*.ipynb
 .ipynb_checkpoints/
+__pycache__/
+benchmark/results/latest_*.csv

@@ -56,7 +56,7 @@ smoke:
 		| python3 -m json.tool
 
 benchmark:
-	locust -f benchmark/locustfile.py --headless -u 10 -r 2 -t 60s \
+	$(HOME)/locust-venv/bin/locust -f benchmark/locustfile.py --headless -u 10 -r 2 -t 60s \
 		--host http://localhost:8000 \
 		--csv benchmark/results/latest
 
