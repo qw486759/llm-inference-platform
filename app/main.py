@@ -111,6 +111,7 @@ async def chat_completions(req: ChatRequest):
     # Dividing by 1e9 converts to seconds for tokens/sec calculation.
     # This isolates GPU inference throughput from network and API overhead.
     eval_duration_ns = data.get("eval_duration", 0)
+    tokens_per_sec = None
     if eval_duration_ns > 0 and tokens > 0:
         tokens_per_sec = tokens / (eval_duration_ns / 1e9)
         TOKENS_PER_SECOND.observe(tokens_per_sec)
@@ -119,12 +120,15 @@ async def chat_completions(req: ChatRequest):
     REQUEST_LATENCY.observe(latency)
     TOKENS_GENERATED.inc(tokens)
 
-    logger.info(
-        f"[{request_id}] latency={latency*1000:.0f}ms "
-        f"tokens={tokens} "
-        f"tokens_per_sec={tokens_per_sec:.1f}" if eval_duration_ns > 0 else
-        f"[{request_id}] latency={latency*1000:.0f}ms tokens={tokens}"
-    )
+    if tokens_per_sec is not None:
+        logger.info(
+            f"[{request_id}] latency={latency*1000:.0f}ms "
+            f"tokens={tokens} tokens_per_sec={tokens_per_sec:.1f}"
+        )
+    else:
+        logger.info(
+            f"[{request_id}] latency={latency*1000:.0f}ms tokens={tokens}"
+        )
 
     return {
         "id": request_id,
