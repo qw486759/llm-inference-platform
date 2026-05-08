@@ -81,6 +81,8 @@ Hardware: NVIDIA GTX 1650 Max-Q (4GB VRAM), k3d local cluster.
 
 **Exception:** Scenario C is preferred for latency-sensitive, predictable-load use cases (e.g., batch processing pipelines or real-time voice interfaces) where the 4s P95 improvement justifies the higher idle cost.
 
+> **Scope note:** This recommendation applies to the local Ollama-backed gateway architecture. In production, autoscaling should be driven by request queue depth, GPU utilization, or tokens/sec rather than gateway CPU alone.
+
 ---
 
 ## Consequences
