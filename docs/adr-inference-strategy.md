@@ -49,6 +49,9 @@ Hardware: NVIDIA GTX 1650 Max-Q (4GB VRAM), k3d local cluster.
 | Error Type | HTTP 502 | None | None |
 | Idle Pod Count | 1 | 2 (min) | 4 |
 
+
+> **Benchmark scope:** Each scenario produced 20–23 total requests over 60 seconds due to multi-second GPU inference latency on GTX 1650 Max-Q. Results should be interpreted directionally rather than as statistically stable performance claims. Behavior at higher concurrency (50–500 users) or on production hardware is not captured.
+
 ---
 
 ## Comparison Table

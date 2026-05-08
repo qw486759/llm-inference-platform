@@ -327,6 +327,44 @@ llm-inference-platform/
 
 ---
 
+## Troubleshooting
+
+### HPA shows `<unknown>` for CPU target
+
+HPA requires the Kubernetes Metrics API (`metrics-server`) to read CPU utilization. Verify it is running:
+
+```bash
+kubectl top pods
+```
+
+If this command fails, metrics-server may not be available in your k3d cluster. Enable it with:
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+
+### Ollama unreachable from pod
+
+If `/ready` returns 503, the FastAPI pod cannot reach Ollama on the host. Verify:
+
+```bash
+# From WSL2
+curl http://host.docker.internal:11434/api/tags
+```
+
+If this fails, ensure Ollama is running (`ollama serve`) and Docker Desktop has host networking enabled.
+
+### Pod stuck in `ErrImageNeverPull`
+
+The image tag in `k8s/deployment.yaml` does not match what was imported into k3d. Verify:
+
+```bash
+docker images | grep llm-inference
+k3d image import llm-inference:v2 -c llm-cluster
+```
+
+---
+
 ## Further Documentation
 
 | Document | Purpose |
