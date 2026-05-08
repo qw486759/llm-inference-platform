@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: llm-inference
-        image: llm-inference:v1
+        image: llm-inference:v2
         imagePullPolicy: Never
         ports:
         - containerPort: 8000
