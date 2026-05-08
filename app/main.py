@@ -58,6 +58,8 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 512
 
+# Backward-compatible lightweight health endpoint.
+# Kubernetes probes use /live (liveness) and /ready (readiness).
 @app.get("/health")
 def health():
     return {"status": "ok"}
