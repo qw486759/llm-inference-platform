@@ -2,4 +2,5 @@
 *.bak
 
 # Jupyter Notebook checkpoints
+.ipynb_checkpoints/benchmark/*.ipynb
 .ipynb_checkpoints/
