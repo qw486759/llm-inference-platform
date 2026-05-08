@@ -25,7 +25,9 @@ class LLMUser(HttpUser):
         ) as resp:
             if resp.status_code == 200:
                 data = resp.json()
-                tokens = data.get("usage", {}).get("total_tokens", 0)
-                resp.success()
+                if data.get("choices") and data["choices"][0].get("message"):
+                    resp.success()
+                else:
+                    resp.failure("Invalid response schema: missing choices or message")
             else:
                 resp.failure(f"HTTP {resp.status_code}")

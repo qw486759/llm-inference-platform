@@ -4,7 +4,7 @@ import uuid
 import httpx
 import logging
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
@@ -75,7 +75,7 @@ async def readiness():
                 return {"status": "ready"}
     except Exception:
         pass
-    return Response(content='{"status": "unavailable"}', status_code=503)
+    return JSONResponse(status_code=503, content={"status": "unavailable"})
 
 
 
@@ -91,7 +91,7 @@ async def chat_completions(req: ChatRequest):
 
     payload = {
         "model": req.model,
-        "messages": [m.dict() for m in req.messages],
+        "messages": [m.model_dump() for m in req.messages],
         "stream": req.stream,
         "options": {
             "temperature": req.temperature,

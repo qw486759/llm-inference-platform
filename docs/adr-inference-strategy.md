@@ -45,7 +45,7 @@ Hardware: NVIDIA GTX 1650 Max-Q (4GB VRAM), k3d local cluster.
 | P50 Latency | 15,000ms | 26,000ms | 22,000ms |
 | P95 Latency | 35,000ms | 28,000ms | **24,000ms** |
 | P99 Latency | 38,000ms | 28,000ms | **24,000ms** |
-| Throughput | 0.37 req/s | 0.34 req/s | **0.40 req/s** |
+| Throughput | 0.37 req/s ⚠️ | 0.34 req/s ⚠️ | 0.40 req/s ✅ |
 | Error Type | HTTP 502 | None | None |
 | Idle Pod Count | 1 | 2 (min) | 4 |
 
@@ -60,7 +60,7 @@ Hardware: NVIDIA GTX 1650 Max-Q (4GB VRAM), k3d local cluster.
 |-----------|--------------|----------------|-----------------|
 | P95 Latency | 35s ❌ | 28s ✅ | 24s ✅✅ |
 | Failure Rate | 45% ❌ | 0% ✅ | 0% ✅ |
-| Throughput | 0.37 req/s ❌ | 0.34 req/s ✅ | 0.40 req/s ✅✅ |
+| Throughput | 0.37 req/s ⚠️ | 0.34 req/s ⚠️ | 0.40 req/s ✅ |
 | Idle Cost | Low ✅✅ | Medium ✅ | High ❌ |
 | Scale-up Lag | N/A | 30–60s ⚠️ | None ✅✅ |
 | Operational Complexity | Low ✅✅ | Medium ✅ | Low ✅✅ |

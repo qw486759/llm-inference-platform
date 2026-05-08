@@ -45,7 +45,6 @@ groups:
             /
             sum(rate(llm_requests_total[5m]))
           ) > 0.05
-          # Guard against division by zero during cold-start or no-traffic windows.
           and
           sum(rate(llm_requests_total[5m])) > 0
         for: 2m
