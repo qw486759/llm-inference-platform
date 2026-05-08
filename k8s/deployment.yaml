@@ -18,6 +18,9 @@ spec:
       - name: llm-inference
         image: llm-inference:v2
         imagePullPolicy: Never
+        env:
+        - name: OLLAMA_BASE_URL
+          value: "http://host.docker.internal:11434"
         ports:
         - containerPort: 8000
         resources:

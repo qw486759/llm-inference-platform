@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 import httpx
@@ -42,7 +43,7 @@ app = FastAPI(title="LLM Inference API", version="1.0.0")
 
 # Ollama is expected to run on the host machine.
 # In Docker/Kubernetes, host.docker.internal resolves to the host gateway.
-OLLAMA_BASE_URL = "http://host.docker.internal:11434"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
 
 
 class Message(BaseModel):
