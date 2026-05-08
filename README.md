@@ -69,7 +69,7 @@ Prometheus scrapes `/metrics` from each pod through a Kubernetes `ServiceMonitor
 - Horizontal Pod Autoscaler targeting 70% average CPU utilization
 - Grafana dashboard with request rate, P50/P95/P99 latency, error rate, pod count, and tokens/sec panels
 - Benchmark suite comparing three deployment strategies under concurrent load
-- `k8s/gpu-deployment.example.yaml` — production reference manifest using NVIDIA Device Plugin
+- `k8s/examples/gpu-deployment.example.yaml` — production reference manifest using NVIDIA Device Plugin
 
 ---
 
@@ -162,7 +162,7 @@ kubectl get pods
 kubectl get hpa
 ```
 
-A production GPU deployment reference is available at `k8s/gpu-deployment.example.yaml`, documenting the migration path to GPU-enabled Kubernetes nodes using the NVIDIA Device Plugin (`nvidia.com/gpu: 1` resource request).
+A production GPU deployment reference is available at `k8s/examples/gpu-deployment.example.yaml`, documenting the migration path to GPU-enabled Kubernetes nodes using the NVIDIA Device Plugin (`nvidia.com/gpu: 1` resource request).
 
 ![K8s Deployment and HPA](docs/images/k8s-deploy-hpa.png)
 
@@ -296,7 +296,8 @@ llm-inference-platform/
 │   ├── deployment.yaml
 │   ├── service.yaml
 │   ├── hpa.yaml
-│   └── gpu-deployment.example.yaml  # Production GPU node reference (NVIDIA Device Plugin)
+│   └── examples/
+│       └── gpu-deployment.example.yaml  # Production GPU node reference (NVIDIA Device Plugin)
 ├── monitoring/
 │   ├── servicemonitor.yaml
 │   ├── grafana-dashboard.json

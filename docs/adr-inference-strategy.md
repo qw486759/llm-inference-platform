@@ -144,7 +144,7 @@ Measured GPU inference throughput on this hardware: **~20 tokens/sec** on NVIDIA
 
 ## Production GPU Deployment Path
 
-The local benchmark uses host-level Ollama GPU acceleration because the test environment runs on WSL2 + k3d, which does not support GPU passthrough to Kubernetes pods. The production migration path is documented in `k8s/gpu-deployment.example.yaml`.
+The local benchmark uses host-level Ollama GPU acceleration because the test environment runs on WSL2 + k3d, which does not support GPU passthrough to Kubernetes pods. The production migration path is documented in `k8s/examples/gpu-deployment.example.yaml`.
 
 For a production GPU-enabled Kubernetes cluster, the key changes are:
 
