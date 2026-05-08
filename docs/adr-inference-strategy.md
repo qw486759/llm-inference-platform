@@ -74,7 +74,7 @@ Hardware: NVIDIA GTX 1650 Max-Q (4GB VRAM), k3d local cluster.
 
 **Rationale:**
 
-1. **Reliability over raw performance.** Scenario A's 45% failure rate is unacceptable under any reasonable load. Both B and C achieve 0% failure rate.
+1. **Reliability over raw performance.** Scenario A's 45% failure rate under this 10-user benchmark is unacceptable for the target operating envelope. Both B and C achieve 0% failure rate.
 
 2. **Cost efficiency.** Scenario C's 4-pod static fleet consumes 4× the idle resources. HPA scales down to minReplicas=2 during low-traffic periods, reducing waste.
 
