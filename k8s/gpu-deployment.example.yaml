@@ -33,7 +33,7 @@ spec:
         accelerator: nvidia
       containers:
       - name: llm-inference-gpu
-        image: llm-inference:v2
+        image: llm-inference:v2  # GPU scheduling reference only — replace with vLLM/Triton image for production
         ports:
         - containerPort: 8000
         resources:

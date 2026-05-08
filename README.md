@@ -60,8 +60,8 @@ Prometheus scrapes `/metrics` from each pod through a Kubernetes `ServiceMonitor
 
 ## Key Features
 
-- OpenAI-compatible REST API with streaming and non-streaming response modes
-- `/health` endpoint for Kubernetes readiness and liveness probes
+- OpenAI-compatible REST API; non-streaming responses follow the OpenAI chat completion schema; streaming mode proxies Ollama NDJSON chunks for local testing
+- `/live` and `/ready` endpoints for Kubernetes liveness and readiness probes (readiness validates Ollama backend reachability)
 - `/metrics` endpoint exposing Prometheus-format counters and histograms
 - **`llm_tokens_per_second` metric** derived from Ollama's `eval_duration` — isolates GPU inference throughput from network and API overhead
 - Multi-stage Dockerfile producing a minimal runtime image
