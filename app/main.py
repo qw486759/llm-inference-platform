@@ -58,10 +58,25 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 512
 
-
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/live")
+def liveness():
+    return {"status": "alive"}
+
+@app.get("/ready")
+async def readiness():
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            if resp.status_code == 200:
+                return {"status": "ready"}
+    except Exception:
+        pass
+    return Response(content='{"status": "unavailable"}', status_code=503)
+
 
 
 @app.get("/metrics")
