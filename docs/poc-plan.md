@@ -104,7 +104,7 @@ kubectl get pods -w
 kubectl get hpa
 ```
 
-**Expected pod state:** Two `llm-inference` pods reach `Running` status within 60 seconds.
+**Expected pod state:** Two `llm-inference` pods reach `Running` and `READY 1/1` within 60 seconds, assuming host Ollama is running and reachable from k3d.
 
 **Expected HPA state:**
 ```
@@ -211,7 +211,7 @@ k3d cluster delete llm-cluster
 | Check | Pass Condition | Notes |
 |-------|---------------|-------|
 | GPU offload | `nvidia-smi` shows Ollama consuming GPU memory during inference | CPU-only inference will be significantly slower |
-| Pod readiness | 2 pods Running within 60s | Check image pull and resource limits if delayed |
+| Pod readiness | 2 pods Running and READY 1/1 within 60s | Check image pull, resource limits, and Ollama reachability if delayed |
 | HPA visible | `kubectl get hpa` shows target CPU % | Requires Kubernetes Metrics API / metrics-server |
 | Prometheus scrape | llm-inference target shows `UP` | Allow 60s after ServiceMonitor apply |
 | Grafana panels | All 5 panels populated with data | Send at least 5 requests before checking |

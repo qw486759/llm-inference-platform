@@ -1,4 +1,4 @@
-.PHONY: build import deploy observe benchmark smoke clean help
+.PHONY: build import deploy observe benchmark smoke clean help cluster port-forward all
 
 CLUSTER_NAME=llm-cluster
 IMAGE_NAME=llm-inference

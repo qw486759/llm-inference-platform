@@ -63,7 +63,7 @@ Prometheus scrapes `/metrics` from each pod through a Kubernetes `ServiceMonitor
 - OpenAI-compatible REST API; non-streaming responses follow the OpenAI chat completion schema; streaming mode proxies Ollama NDJSON chunks for local testing
 - `/live` and `/ready` endpoints for Kubernetes liveness and readiness probes (readiness validates Ollama backend reachability)
 - `/metrics` endpoint exposing Prometheus-format counters and histograms
-- **`llm_tokens_per_second` metric** derived from Ollama's `eval_duration` — isolates GPU inference throughput from network and API overhead
+- **`llm_tokens_per_second` metric** — per-request token generation rate observed as a Prometheus histogram, derived from Ollama's `eval_duration`; isolates GPU inference throughput from network and API overhead
 - Multi-stage Dockerfile producing a minimal runtime image
 - Kubernetes Deployment with CPU resource requests and limits
 - Horizontal Pod Autoscaler targeting 70% average CPU utilization
@@ -178,7 +178,7 @@ Prometheus scrapes `/metrics` from each pod every 15 seconds via a `ServiceMonit
 | Latency Histogram | P50, P95, P99 via `histogram_quantile` |
 | Error Rate | Error requests as a fraction of total |
 | Pod Count | HPA current and maximum replica counts |
-| **Tokens/sec** | `llm_tokens_per_second` — GPU inference throughput derived from `eval_duration` |
+| **Tokens/sec** | `llm_tokens_per_second` — per-request token generation rate observed as a Prometheus histogram, derived from Ollama `eval_duration` |
 
 ![Grafana Dashboard](docs/images/grafana-benchmark.png)
 
@@ -244,12 +244,12 @@ Three deployment strategies were benchmarked under identical workload conditions
 
 ### Interpretation
 
-Single-pod deployment fails under modest load due to Ollama's serial request queue overflowing (HTTP 502). Both multi-pod configurations eliminate failures entirely.
+Single-pod deployment fails under modest load due to Ollama's serial request queue overflowing (HTTP 502). Both multi-pod configurations eliminated failures in this benchmark.
 
 A key finding emerges from the throughput numbers: **adding gateway pods from 2 to 4 increases throughput by only 0.06 req/s** (0.34 → 0.40 req/s). This near-flat throughput curve reveals that the bottleneck is the **shared GPU backend**, not the API gateway layer. All requests — regardless of pod count — ultimately serialize through the single Ollama runtime on the host GPU.
 
 This exposes two distinct scaling dimensions:
-- **Gateway scalability** — handled by Kubernetes HPA; eliminates request queue overflow and 502 errors
+- **Gateway scalability** — handled by Kubernetes HPA; reduced gateway-side queue overflow and 502 errors in this test
 - **Accelerator capacity** — fixed by hardware; true horizontal scaling requires multiple GPU nodes or a batching-capable runtime (vLLM, Triton)
 
 Pre-scaling achieves the lowest P95 latency (24s) because pods are already warm when requests arrive. HPA dynamic scaling introduces a 30–60 second scale-up lag, temporarily increasing latency during the ramp-up window, but reduces idle resource cost during low-traffic periods.

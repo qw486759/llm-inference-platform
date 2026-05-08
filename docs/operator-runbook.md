@@ -47,7 +47,8 @@ Ollama's serial request queue is overflowing. Immediate actions:
 kubectl logs -l app=llm-inference --tail=50
 
 # Check Ollama is reachable from a gateway pod
-kubectl exec -it <pod-name> -- curl -s http://host.docker.internal:11434/api/tags
+kubectl exec -it <pod-name> -- printenv OLLAMA_BASE_URL
+kubectl exec -it <pod-name> -- sh -c 'curl -s "$OLLAMA_BASE_URL/api/tags"'
 ```
 
 **Tokens/sec dropping without load increase:**

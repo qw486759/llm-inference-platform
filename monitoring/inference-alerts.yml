@@ -61,7 +61,6 @@ groups:
 
       - alert: HPAAtMaxCapacity
         expr: |
-          # Add namespace="default" or your deployment namespace if multiple namespaces are monitored.
           kube_horizontalpodautoscaler_status_current_replicas{
             horizontalpodautoscaler="llm-inference-hpa"
           }
@@ -75,6 +74,7 @@ groups:
           service: llm-inference
         annotations:
           summary: "HPA held at maximum replica count for 10 minutes"
+          note: "Add namespace=\"default\" label to the metric selectors if monitoring multiple namespaces."
           description: >
             The inference gateway HPA has been at its maximum replica count for 10 minutes.
             Gateway scaling ceiling reached — additional pods will not reduce latency further
