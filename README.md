@@ -16,7 +16,7 @@ Beyond request serving, the platform treats inference as an operational workload
 └─────────────────────────┬────────────────────────────────────┘
                           │ POST /v1/chat/completions
 ┌─────────────────────────▼────────────────────────────────────┐
-│             Kubernetes Service (ClusterIP:8000)               │
+│             Kubernetes Service (ClusterIP:8000)              │
 │  ┌──────────────────┐  ┌──────────────────┐                  │
 │  │  FastAPI Pod 1   │  │  FastAPI Pod 2   │  ← HPA: 2–6 pods │
 │  └────────┬─────────┘  └────────┬─────────┘                  │
