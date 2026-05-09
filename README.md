@@ -309,6 +309,7 @@ llm-inference-platform/
 │   ├── adr-inference-strategy.md  # Full ADR with GPU bottleneck analysis
 │   ├── poc-plan.md                # POC validation runbook
 │   ├── operator-runbook.md        # Day-2 operations and runtime evaluation guide
+│   └── validation-report.md       # E2E validation report — 22 checks, 3 issues found and fixed
 │   ├── phase1-setup-log.md
 │   ├── phase2-setup-log.md
 │   ├── phase3-setup-log.md
@@ -382,4 +383,5 @@ k3d image import llm-inference:v2 -c llm-cluster
 | [`docs/adr-inference-strategy.md`](docs/adr-inference-strategy.md) | Architecture Decision Record — GPU bottleneck analysis, strategy comparison, production path |
 | [`docs/poc-plan.md`](docs/poc-plan.md) | POC validation runbook — environment prerequisites, deployment phases, success criteria |
 | [`docs/operator-runbook.md`](docs/operator-runbook.md) | Operator guide — Grafana interpretation, runtime evaluation, GPU bottleneck checklist, HPA tuning |
+| [`docs/validation-report.md`](docs/validation-report.md) | E2E validation report — 22 checks across all phases, 3 issues found and fixed during testing |
 | [`monitoring/inference-alerts.yml`](monitoring/inference-alerts.yml) | Prometheus alert rules — latency degradation, error rate, HPA capacity, service availability |
