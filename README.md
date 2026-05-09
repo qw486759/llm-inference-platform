@@ -309,7 +309,7 @@ llm-inference-platform/
 │   ├── adr-inference-strategy.md  # Full ADR with GPU bottleneck analysis
 │   ├── poc-plan.md                # POC validation runbook
 │   ├── operator-runbook.md        # Day-2 operations and runtime evaluation guide
-│   └── validation-report.md       # E2E validation report — 22 checks, 3 issues found and fixed
+│   ├── validation-report.md       # E2E validation report — 22 checks, 3 issues found and fixed
 │   ├── phase1-setup-log.md
 │   ├── phase2-setup-log.md
 │   ├── phase3-setup-log.md
